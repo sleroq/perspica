@@ -45,6 +45,10 @@ a { color: var(--accent); }
 .stats { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; color: var(--text-2); }
 .stats b { color: var(--text-0); font-weight: 600; }
 .add { color: var(--add); } .del { color: var(--del); }
+.learn { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; margin: 0; font-size: 13px; color: var(--text-2); }
+.learn .tag { font-weight: 600; color: var(--text-1); }
+.learn a { color: var(--accent); text-decoration: none; background: var(--bg-0); border: 1px solid var(--border); border-radius: 999px; padding: 1px 9px; }
+.learn a:hover { border-color: var(--accent); }
 .links { display: flex; gap: 16px; font-size: 14px; }
 .links .open { font-weight: 600; text-decoration: none; }
 .links a:hover { text-decoration: underline; }
@@ -55,8 +59,8 @@ footer { margin-top: 40px; color: var(--text-2); font-size: 13px; }
 <main>
   <header>
     <h1><a href="https://github.com/sshah03/perspica">perspica</a> examples</h1>
-    <p>Real pull requests from popular open source projects, reviewed with perspica. Click one to see the full review.</p>
-    <p class="small">The reading order, the mechanical changes and the checks come from perspica on its own. The summary and notes come from Claude Opus 5.5. To try it on your own code, run <code>cargo install perspica</code>, then <code>perspica --pr 123 --web</code> in your repo.</p>
+    <p>Real pull requests from popular open source projects, reviewed with perspica. Click one to see the full review, or pick a concept to go straight to its lesson in Learn.</p>
+    <p class="small">The reading order, the mechanical changes and the checks come from perspica on its own. The summary, the notes and the Learn lessons come from Claude Opus 5.5. To try it on your own code, run <code>cargo install perspica</code>, then <code>perspica --pr 123 --web</code> in your repo.</p>
   </header>
   <section class="grid">
       <article class="card">
@@ -68,6 +72,7 @@ footer { margin-top: 40px; color: var(--text-2); font-size: 13px; }
           <span>16 files</span><span class="add">+307</span><span class="del">−238</span>
           <span><b>152</b> to review</span><span><b>393</b> mechanical</span><span><b>4</b> notes</span>
         </div>
+        <p class="learn"><span class="tag">Learn</span><a href="examples/react-three-fiber-4008.html#area=learn&amp;concept=c1">Domain modules behind compatibility re-exports</a><a href="examples/react-three-fiber-4008.html#area=learn&amp;concept=c2">ES module cycles and type-only imports</a></p>
         <div class="links"><a class="open" href="examples/react-three-fiber-4008.html">Open the review</a><a class="gh" href="https://github.com/pmndrs/react-three-fiber/pull/4008">PR on GitHub</a></div>
       </article>
       <article class="card">
@@ -79,6 +84,7 @@ footer { margin-top: 40px; color: var(--text-2); font-size: 13px; }
           <span>6 files</span><span class="add">+213</span><span class="del">−11</span>
           <span><b>109</b> to review</span><span><b>98</b> mechanical</span><span><b>5</b> notes</span>
         </div>
+        <p class="learn"><span class="tag">Learn</span><a href="examples/ripgrep-3189.html#area=learn&amp;concept=c1">Global gitignores anchored to an explicit CWD</a><a href="examples/ripgrep-3189.html#area=learn&amp;concept=c2">OnceLock lazy init and call-order dependence</a></p>
         <div class="links"><a class="open" href="examples/ripgrep-3189.html">Open the review</a><a class="gh" href="https://github.com/BurntSushi/ripgrep/pull/3189">PR on GitHub</a></div>
       </article>
       <article class="card">
@@ -90,6 +96,7 @@ footer { margin-top: 40px; color: var(--text-2); font-size: 13px; }
           <span>6 files</span><span class="add">+167</span><span class="del">−72</span>
           <span><b>197</b> to review</span><span><b>32</b> mechanical</span><span><b>5</b> notes</span>
         </div>
+        <p class="learn"><span class="tag">Learn</span><a href="examples/flask-5818.html#area=learn&amp;concept=c1">Explicit context instead of proxies</a><a href="examples/flask-5818.html#area=learn&amp;concept=c2">Subclass signature-sniffing compat shim</a><a href="examples/flask-5818.html#area=learn&amp;concept=c3">Annotations are strings under PEP 563</a></p>
         <div class="links"><a class="open" href="examples/flask-5818.html">Open the review</a><a class="gh" href="https://github.com/pallets/flask/pull/5818">PR on GitHub</a></div>
       </article>
       <article class="card">
@@ -101,6 +108,7 @@ footer { margin-top: 40px; color: var(--text-2); font-size: 13px; }
           <span>7 files</span><span class="add">+349</span><span class="del">−67</span>
           <span><b>200</b> to review</span><span><b>131</b> mechanical</span><span><b>5</b> notes</span>
         </div>
+        <p class="learn"><span class="tag">Learn</span><a href="examples/fs2-3681.html#area=learn&amp;concept=c1">Redirection handled by the OS, not by fs2 streams</a><a href="examples/fs2-3681.html#area=learn&amp;concept=c2">Merging stderr at the OS level vs. in streams</a></p>
         <div class="links"><a class="open" href="examples/fs2-3681.html">Open the review</a><a class="gh" href="https://github.com/typelevel/fs2/pull/3681">PR on GitHub</a></div>
       </article>
       <article class="card">
@@ -112,6 +120,7 @@ footer { margin-top: 40px; color: var(--text-2); font-size: 13px; }
           <span>7 files</span><span class="add">+207</span><span class="del">−95</span>
           <span><b>158</b> to review</span><span><b>73</b> mechanical</span><span><b>5</b> notes</span>
         </div>
+        <p class="learn"><span class="tag">Learn</span><a href="examples/jsoup-2618.html#area=learn&amp;concept=c1">Insertion-location object replaced by two paths</a><a href="examples/jsoup-2618.html#area=learn&amp;concept=c2">HTML foster parenting for table text</a></p>
         <div class="links"><a class="open" href="examples/jsoup-2618.html">Open the review</a><a class="gh" href="https://github.com/jhy/jsoup/pull/2618">PR on GitHub</a></div>
       </article>
       <article class="card">
@@ -123,6 +132,7 @@ footer { margin-top: 40px; color: var(--text-2); font-size: 13px; }
           <span>6 files</span><span class="add">+594</span><span class="del">−39</span>
           <span><b>87</b> to review</span><span><b>123</b> mechanical</span><span><b>3</b> notes</span>
         </div>
+        <p class="learn"><span class="tag">Learn</span><a href="examples/spark-59118.html#area=learn&amp;concept=c1">Schema decides how strictly counts are checked</a><a href="examples/spark-59118.html#area=learn&amp;concept=c2">BYTE_STREAM_SPLIT stride comes from page length</a><a href="examples/spark-59118.html#area=learn&amp;concept=c3">Overflow-safe check, once per batch</a></p>
         <div class="links"><a class="open" href="examples/spark-59118.html">Open the review</a><a class="gh" href="https://github.com/apache/spark/pull/59118">PR on GitHub</a></div>
       </article>
       <article class="card">
@@ -134,6 +144,7 @@ footer { margin-top: 40px; color: var(--text-2); font-size: 13px; }
           <span>11 files</span><span class="add">+540</span><span class="del">−8</span>
           <span><b>132</b> to review</span><span><b>189</b> mechanical</span><span><b>5</b> notes</span>
         </div>
+        <p class="learn"><span class="tag">Learn</span><a href="examples/execa-1251.html#area=learn&amp;concept=c1">cross-spawn replaced by in-house resolver</a><a href="examples/execa-1251.html#area=learn&amp;concept=c2">cmd.exe two-layer argument escaping</a></p>
         <div class="links"><a class="open" href="examples/execa-1251.html">Open the review</a><a class="gh" href="https://github.com/sindresorhus/execa/pull/1251">PR on GitHub</a></div>
       </article>
       <article class="card">
@@ -145,6 +156,7 @@ footer { margin-top: 40px; color: var(--text-2); font-size: 13px; }
           <span>4 files</span><span class="add">+180</span><span class="del">−28</span>
           <span><b>169</b> to review</span><span><b>22</b> mechanical</span><span><b>5</b> notes</span>
         </div>
+        <p class="learn"><span class="tag">Learn</span><a href="examples/jq-3539.html#area=learn&amp;concept=c1">In-band error sentinels in comparison APIs</a><a href="examples/jq-3539.html#area=learn&amp;concept=c2">Aborting qsort via thread-local flag</a></p>
         <div class="links"><a class="open" href="examples/jq-3539.html">Open the review</a><a class="gh" href="https://github.com/jqlang/jq/pull/3539">PR on GitHub</a></div>
       </article>
       <article class="card">
@@ -156,6 +168,7 @@ footer { margin-top: 40px; color: var(--text-2); font-size: 13px; }
           <span>9 files</span><span class="add">+192</span><span class="del">−55</span>
           <span><b>119</b> to review</span><span><b>109</b> mechanical</span><span><b>5</b> notes</span>
         </div>
+        <p class="learn"><span class="tag">Learn</span><a href="examples/fzf-4891.html#area=learn&amp;concept=c1">Batched terminal queries ended by DSR</a><a href="examples/fzf-4891.html#area=learn&amp;concept=c2">Tri-state restore of terminal mode</a></p>
         <div class="links"><a class="open" href="examples/fzf-4891.html">Open the review</a><a class="gh" href="https://github.com/junegunn/fzf/pull/4891">PR on GitHub</a></div>
       </article>
       <article class="card">
@@ -167,6 +180,7 @@ footer { margin-top: 40px; color: var(--text-2); font-size: 13px; }
           <span>3 files</span><span class="add">+49</span><span class="del">−97</span>
           <span><b>111</b> to review</span><span><b>20</b> mechanical</span><span><b>4</b> notes</span>
         </div>
+        <p class="learn"><span class="tag">Learn</span><a href="examples/hono-5237.html#area=learn&amp;concept=c1">Patterns stored on child nodes</a><a href="examples/hono-5237.html#area=learn&amp;concept=c2">Module-level insertion score counter</a></p>
         <div class="links"><a class="open" href="examples/hono-5237.html">Open the review</a><a class="gh" href="https://github.com/honojs/hono/pull/5237">PR on GitHub</a></div>
       </article>
       <article class="card">
@@ -178,6 +192,7 @@ footer { margin-top: 40px; color: var(--text-2); font-size: 13px; }
           <span>4 files</span><span class="add">+202</span><span class="del">−13</span>
           <span><b>85</b> to review</span><span><b>53</b> mechanical</span><span><b>5</b> notes</span>
         </div>
+        <p class="learn"><span class="tag">Learn</span><a href="examples/jellyfin-18090.html#area=learn&amp;concept=c1">Episode identity by unique provider id</a><a href="examples/jellyfin-18090.html#area=learn&amp;concept=c2">Stopping duplicates when they are created</a></p>
         <div class="links"><a class="open" href="examples/jellyfin-18090.html">Open the review</a><a class="gh" href="https://github.com/jellyfin/jellyfin/pull/18090">PR on GitHub</a></div>
       </article>
       <article class="card">
@@ -189,6 +204,7 @@ footer { margin-top: 40px; color: var(--text-2); font-size: 13px; }
           <span>3 files</span><span class="add">+129</span><span class="del">−29</span>
           <span><b>31</b> to review</span><span><b>40</b> mechanical</span><span><b>4</b> notes</span>
         </div>
+        <p class="learn"><span class="tag">Learn</span><a href="examples/okhttp-9656.html#area=learn&amp;concept=c1">HTTPS/SVCB AliasMode (priority 0)</a><a href="examples/okhttp-9656.html#area=learn&amp;concept=c2">Non-local return from inline lambda</a></p>
         <div class="links"><a class="open" href="examples/okhttp-9656.html">Open the review</a><a class="gh" href="https://github.com/square/okhttp/pull/9656">PR on GitHub</a></div>
       </article>
   </section>
