@@ -52,7 +52,7 @@ impl Language {
     }
 
     pub fn from_path(path: &str) -> Self {
-        let file = path.rsplit('/').next().unwrap_or(path);
+        let file = path.rsplit(|c| c == '/' || c == '\\').next().unwrap_or(path);
         // Ruby files without an extension, and Laravel's Blade templates, which are HTML.
         if matches!(file, "Gemfile" | "Rakefile" | "Guardfile" | "Podfile" | "Vagrantfile" | "Brewfile" | "Fastfile") { return Language::Ruby; }
         if file.ends_with(".blade.php") { return Language::Unknown; }

@@ -21,7 +21,7 @@ use std::path::PathBuf;
     name = "perspica",
     about = "Review code changes by what they do",
     version,
-    after_help = "Examples:\n  perspica                      review the current branch (run inside a repo)\n  perspica old.ts new.ts\n  perspica --staged --web\n  perspica --git main...feature -s\n  perspica --pr 123 --web"
+    after_help = "Examples:\n  perspica                      review the current branch (run inside a repo)\n  perspica old.ts new.ts\n  perspica --staged --web\n  perspica --git main...feature -s\n  perspica --pr 123 --web\n  perspica --files src/auth,lib  only review changed files matching those paths"
 )]
 struct Cli {
     /// Old file path
@@ -33,6 +33,10 @@ struct Cli {
     /// Override language detection
     #[arg(short, long)]
     language: Option<String>,
+
+    /// Only review changed files whose path contains one of these substrings (repeatable, or comma-separated)
+    #[arg(long = "files", value_delimiter = ',')]
+    files: Vec<String>,
 
     /// Output format: tty (default), json, web, html (the viewer saved as one file, see --out)
     #[arg(short, long, default_value = "tty")]
@@ -242,7 +246,7 @@ fn main() {
     }
     let mut source = SourceInfo { label: String::new(), pr_title: None, pr_url: None, author_context: None, sessions: Default::default(), detail: None, repo: None, repo_url: None };
     let mut target: Option<git::Target> = None;
-    let diffs: Vec<git::GitFileDiff> = if let Some(pr) = cli.pr {
+    let mut diffs: Vec<git::GitFileDiff> = if let Some(pr) = cli.pr {
         let (t, info) = git::pr_target(pr).unwrap_or_else(|e| fail(e));
         source.label = format!("PR #{}", info.number);
         source.detail = Some(format!("PR #{}: {}\n{}\n{}", info.number, info.title, info.url, t.detail()));
@@ -296,6 +300,17 @@ fn main() {
             source.repo = Some(name);
             source.repo_url = url;
         }
+    }
+
+    // Limit to files whose path contains one of the --files substrings.
+    if !cli.files.is_empty() {
+        let before = diffs.len();
+        diffs.retain(|d| cli.files.iter().any(|pat| d.new_path.contains(pat) || d.old_path.contains(pat)));
+        if diffs.is_empty() {
+            eprintln!("No changed files match --files {:?} (checked {} changed file{}).", cli.files, before, if before == 1 { "" } else { "s" });
+            std::process::exit(0);
+        }
+        eprintln!("Reviewing {}/{} changed file{} matching --files.", diffs.len(), before, if diffs.len() == 1 { "" } else { "s" });
     }
 
     if diffs.is_empty() {
