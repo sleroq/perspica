@@ -80,6 +80,13 @@ perspica --pr 123 --format html           # the viewer as one file to share, wit
 
 Everything above works on its own. The optional LLM analysis (`-s`, or **Analyze…** in the viewer) runs through Claude Code, an API key or Ollama; see [LLM analysis](#llm-analysis) for setup. Alternatively you can ask your coding assistant to run it for you.
 
+### View preferences
+
+The **View** popup includes an **Animations** toggle for smooth scrolling,
+transitions, and feedback effects. The preference is saved in your browser.
+Without an explicit choice, Perspica follows your operating system’s
+reduced-motion setting. Keyboard navigation stays instant.
+
 ### Open reviewed files in your editor
 
 The live web viewer has **Open in editor** in each file header and **Open change**

@@ -9,6 +9,8 @@
     <script>
         // Apply the saved theme before first paint (no flash).
         try { const t = localStorage.getItem('perspica-theme'); if (t) document.documentElement.setAttribute('data-theme', t); } catch {}
+        // Only an explicit boolean overrides the system motion preference.
+        try { const a = JSON.parse(localStorage.getItem('perspica:animations')); if (typeof a === 'boolean') document.documentElement.dataset.animations = String(a); } catch {}
     </script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js" defer></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/typescript.min.js" defer></script>
@@ -70,6 +72,7 @@
                     </div>
                     <label class="menu-check"><input type="checkbox" id="noise-toggle" checked><span>Collapse mechanical changes</span><span class="kbd">m</span></label>
                     <label class="menu-check"><input type="checkbox" id="wrap-toggle"><span>Wrap long lines</span><span class="kbd">w</span></label>
+                    <label class="menu-check"><input type="checkbox" id="animations-toggle"><span>Animations</span></label>
                     <div class="menu-sep"></div>
                     <button class="menu-item" id="theme-toggle" role="menuitem"><span>Light / dark theme</span><span class="kbd">t</span></button>
                 </div>

@@ -707,6 +707,11 @@ body.area-learn #sidebar-tabs, body.area-learn #toc-filter-wrap { display: none 
     .pill-btn { padding: 4px 7px; font-size: 12px; }
     .viewed-toggle span { display: none; }
 }
+:root[data-animations="false"], :root[data-animations="false"] *, :root[data-animations="false"] ::before, :root[data-animations="false"] ::after {
+    transition: none !important; animation: none !important; scroll-behavior: auto !important;
+}
 @media (prefers-reduced-motion: reduce) {
-    * { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
+    :root:not([data-animations="true"]), :root:not([data-animations="true"]) *, :root:not([data-animations="true"]) ::before, :root:not([data-animations="true"]) ::after {
+        transition: none !important; animation: none !important; scroll-behavior: auto !important;
+    }
 }

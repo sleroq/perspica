@@ -10,12 +10,15 @@ const store = {
     },
 };
 
+const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+
 const S = {
     data: null,
     mode: store.get('mode', null),             // 'files' | 'intent' | 'flow'; null: pick from the data
     view: store.get('view', 'unified'),        // 'unified' | 'split'
     hideNoise: store.get('hideNoise', true),
     wrap: store.get('wrap', false),
+    animations: store.get('animations', null), // null: follow the system preference
     tab: 'outline',        // sidebar tab: 'outline' (maps the current review order) | 'changes' (flat index)
     overviewCollapsed: store.get('overviewCollapsed', false),
     onlyUnviewed: false,   // sidebar shows only what isn't marked viewed
@@ -45,8 +48,9 @@ let E = new Map();            // entry id → entry
 let nameIndex = null;         // escaped item name → entry id, for links in model text
 let instantScroll = false;    // set while a keyboard shortcut (or a restore) moves the view
 
+function animationsEnabled() { return typeof S.animations === 'boolean' ? S.animations : !reducedMotion.matches; }
 // Smooth scrolls only run in a visible tab; a hidden one would never get there.
-function scrollBehavior() { return instantScroll || document.visibilityState === 'hidden' ? 'auto' : 'smooth'; }
+function scrollBehavior() { return !animationsEnabled() || instantScroll || document.visibilityState === 'hidden' ? 'auto' : 'smooth'; }
 let entryHunks = new Map();   // entry id → [{fi, hi}]
 let testIds = new Set();      // entry ids that are changes to test code
 let fileByPath = new Map();   // path → fi
@@ -96,6 +100,7 @@ const NOISE_LABEL = { formatting: 'formatting only', comment: 'comments only', r
 // --- Init ---
 async function init() {
     applyBodyClasses();
+    applyAnimations();
     // A saved page carries its data. Otherwise ask the local server.
     const embedded = document.getElementById('perspica-data');
     S.static = !!embedded;
@@ -2101,7 +2106,7 @@ svg text{font-family:var(--font);font-size:12px;fill:var(--fg)}
 svg .k-mono{font-family:var(--mono)}
 svg .k-node{fill:var(--bg);stroke:var(--border);stroke-width:1}
 svg .k-edge{stroke:var(--fg-muted);stroke-width:1.25;fill:none}
-@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}`;
+:root[data-animations="false"],:root[data-animations="false"] *,:root[data-animations="false"] ::before,:root[data-animations="false"] ::after{transition:none!important;animation:none!important;scroll-behavior:auto!important}`;
 const LEARN_KIT_JS = `window.Kit={steps(total,show,opts={}){if(Kit._stop)Kit._stop();let i=Math.min(opts.start||0,total-1),timer=0;const ms=opts.interval||1200;
 const q=n=>document.querySelector('[data-kit="'+n+'"]');
 const sync=()=>{const p=q('play');if(p)p.textContent=timer?'Pause':(i>=total-1?'Replay':'Play');const c=q('count');if(c)c.textContent=(i+1)+' / '+total;};
@@ -2147,12 +2152,12 @@ function frameDoc(html) {
 addEventListener('error',e=>fail(e.message||'script error'));addEventListener('unhandledrejection',()=>fail('unhandled promise rejection'));
 addEventListener('load',()=>setTimeout(()=>{const b=document.body;const drawn=b&&(b.innerText.trim().length>0||[...b.querySelectorAll('svg,canvas,img')].some(el=>{const r=el.getBoundingClientRect();return r.width*r.height>100;}));if(!drawn)fail('nothing drawn');settled=true;},800));})()<\/script>`;
     // Our head goes first, so the policy and the watcher apply before any of the model's markup runs.
-    const head = `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${policy}">${watcher}<style>:root{color-scheme:${cs.colorScheme || 'dark'};${vars}}html,body{margin:0;background:transparent;color:var(--fg);font:13px/1.45 var(--font)}\n${LEARN_KIT_CSS}</style><script>${LEARN_KIT_JS}<\/script></head>`;
+    const head = `<!doctype html><html data-animations="${animationsEnabled()}"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${policy}">${watcher}<style>:root{color-scheme:${cs.colorScheme || 'dark'};${vars}}html,body{margin:0;background:transparent;color:var(--fg);font:13px/1.45 var(--font)}\n${LEARN_KIT_CSS}</style><script>${LEARN_KIT_JS}<\/script></head>`;
     // Its own policy would stack on ours and could block its own script. A refresh could navigate the frame away.
     const body = html.replace(/^\s*<!doctype[^>]*>/i, '').replace(/<meta[^>]*http-equiv\s*=\s*["']?(refresh|content-security-policy)[^>]*>/gi, '');
     // The piece reports its height, so the frame fits it without a scrollbar.
     // It also passes on perspica's shortcut keys it didn't use itself, so they work after a click inside it.
-    const sizer = `<script>(()=>{const post=()=>parent.postMessage({perspicaFrameHeight:Math.ceil(document.documentElement.getBoundingClientRect().height)},'*');new ResizeObserver(post).observe(document.documentElement);addEventListener('load',post);post();
+    const sizer = `<script>(()=>{addEventListener('message',e=>{if(e.source===parent&&typeof e.data?.perspicaAnimations==='boolean')document.documentElement.dataset.animations=String(e.data.perspicaAnimations);});const post=()=>parent.postMessage({perspicaFrameHeight:Math.ceil(document.documentElement.getBoundingClientRect().height)},'*');new ResizeObserver(post).observe(document.documentElement);addEventListener('load',post);post();
 addEventListener('keydown',e=>{if(e.defaultPrevented||e.metaKey||e.ctrlKey||e.altKey||/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)||!'lejkqtb?'.includes(e.key))return;parent.postMessage({perspicaKey:e.key},'*');});})()<\/script>`;
     return head + body + sizer;
 }
@@ -2418,6 +2423,16 @@ function setWrap(on) {
     applyBodyClasses();
     document.getElementById('wrap-toggle').checked = on;
 }
+function setAnimations(on) {
+    S.animations = on; store.set('animations', on);
+    applyAnimations();
+}
+function applyAnimations() {
+    const on = animationsEnabled();
+    document.documentElement.dataset.animations = String(on);
+    document.getElementById('animations-toggle').checked = on;
+    document.querySelectorAll('iframe.learn-frame').forEach(f => f.contentWindow.postMessage({ perspicaAnimations: on }, '*'));
+}
 function toggleViewMenu() {
     const menu = document.getElementById('view-menu');
     const open = menu.classList.toggle('hidden') === false;
@@ -2460,6 +2475,8 @@ function setupListeners() {
     document.getElementById('noise-toggle').addEventListener('change', e => setHideNoise(e.target.checked));
     document.getElementById('analyze-btn').addEventListener('click', () => { if (!S.static) startAnalysis(); });
     document.getElementById('wrap-toggle').addEventListener('change', e => setWrap(e.target.checked));
+    document.getElementById('animations-toggle').addEventListener('change', e => setAnimations(e.target.checked));
+    reducedMotion.addEventListener('change', applyAnimations);
     document.getElementById('theme-toggle').addEventListener('click', () => { toggleTheme(); closeViewMenu(); });
     document.getElementById('help-btn').addEventListener('click', () => document.getElementById('shortcut-modal').classList.toggle('hidden'));
     document.getElementById('view-btn').addEventListener('click', e => { e.stopPropagation(); toggleViewMenu(); });
@@ -2524,7 +2541,7 @@ function setupListeners() {
         if (rq) {
             S.overviewCollapsed = false; S.askedOpen = true; renderOverview();
             const li = document.getElementById('req-' + rq.dataset.req);
-            if (li) { li.scrollIntoView({ block: 'center', behavior: 'smooth' }); li.classList.remove('flash'); void li.offsetWidth; li.classList.add('flash'); }
+            if (li) { li.scrollIntoView({ block: 'center', behavior: scrollBehavior() }); li.classList.remove('flash'); void li.offsetWidth; li.classList.add('flash'); }
             return;
         }
         const copy = t.closest('[data-copy]');
