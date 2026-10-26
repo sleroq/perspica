@@ -1,4 +1,4 @@
-use crate::{deep, intel, learn, llm, MultiFileResult};
+use crate::{deep, editor::Editor, intel, learn, llm, MultiFileResult};
 use axum::{extract::{Request, State}, http::{header, Method, StatusCode}, middleware::{self, Next}, response::{Html, IntoResponse, Response}, routing::{get, post}, Json, Router};
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -7,6 +7,7 @@ use tokio::sync::{Mutex, RwLock};
 
 struct AppState {
     result: RwLock<MultiFileResult>,
+    editor: Editor,
     /// None until the user sets one up (see `/api/llm/check`).
     provider: RwLock<Option<Box<dyn llm::LlmProvider>>>,
     detect: llm::Detect,
@@ -19,8 +20,8 @@ struct AppState {
     learn_busy: std::sync::Mutex<HashMap<String, &'static str>>,
 }
 
-pub async fn serve(result: MultiFileResult, port: u16, provider: Option<Box<dyn llm::LlmProvider>>, detect: llm::Detect, open_browser: bool, key: String) {
-    let state = Arc::new(AppState { result: RwLock::new(result), provider: RwLock::new(provider), detect, deep_lock: Mutex::new(()), key, learn_busy: Default::default() });
+pub async fn serve(result: MultiFileResult, port: u16, provider: Option<Box<dyn llm::LlmProvider>>, detect: llm::Detect, open_browser: bool, key: String, editor: Editor) {
+    let state = Arc::new(AppState { result: RwLock::new(result), editor, provider: RwLock::new(provider), detect, deep_lock: Mutex::new(()), key, learn_busy: Default::default() });
 
     // Use the requested port, or the next free one.
     let mut listener = None;
@@ -50,6 +51,7 @@ pub async fn serve(result: MultiFileResult, port: u16, provider: Option<Box<dyn 
         .route("/app.js", get(js_handler))
         .route("/favicon.svg", get(favicon_handler))
         .route("/api/diff", get(api_handler))
+        .route("/api/editor/open", post(editor_handler))
         .route("/api/analyze", post(analyze_handler))
         .route("/api/llm/check", post(check_handler))
         .route("/api/learn", post(learn_handler))
@@ -149,9 +151,27 @@ async fn js_handler() -> impl IntoResponse {
 async fn api_handler(State(state): State<Arc<AppState>>) -> Json<serde_json::Value> {
     let result = state.result.read().await;
     let mut v = serde_json::to_value(&*result).unwrap_or_default();
+    for (entry, file) in v["files"].as_array_mut().into_iter().flatten().zip(&result.files) {
+        entry["editor_error"] = serde_json::json!(state.editor.unavailable(file));
+    }
     drop(result);
     v["capabilities"] = capabilities(&state).await;
     Json(v)
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct EditorRequest {
+    file: usize,
+    hunk: Option<usize>,
+}
+
+async fn editor_handler(State(state): State<Arc<AppState>>, Json(req): Json<EditorRequest>) -> (StatusCode, Json<serde_json::Value>) {
+    let result = state.result.read().await;
+    match state.editor.open(&result, req.file, req.hunk).await {
+        Ok(()) => (StatusCode::OK, Json(serde_json::json!({ "message": format!("Launch requested in {}.", state.editor.name()) }))),
+        Err(error) => (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "error": error }))),
+    }
 }
 
 /// What the Analyze button can do, or, without a provider, what the user can do to set one up.
@@ -175,6 +195,7 @@ async fn capabilities(state: &AppState) -> serde_json::Value {
         None => Some(llm::setup().await),
     };
     serde_json::json!({
+        "editor": state.editor.name(),
         "llm": provider.as_ref().map(|p| p.name()),
         "model": provider.as_ref().map(|p| p.model()),
         "models": provider.as_ref().map(|p| p.model_options()).unwrap_or_default(),

@@ -80,6 +80,42 @@ perspica --pr 123 --format html           # the viewer as one file to share, wit
 
 Everything above works on its own. The optional LLM analysis (`-s`, or **Analyze…** in the viewer) runs through Claude Code, an API key or Ollama; see [LLM analysis](#llm-analysis) for setup. Alternatively you can ask your coding assistant to run it for you.
 
+### Open reviewed files in your editor
+
+The live web viewer has **Open in editor** in each file header and **Open change**
+beside each change's line range. Zed opens at the first changed new-side line
+(or the nearest surviving line for a deletion). Other editors and the system
+default application open the file without a promised line jump.
+
+Choose Zed explicitly, even if your shell has `EDITOR=nvim`:
+
+```bash
+perspica --web --editor /usr/local/bin/zed
+# Or select it for Perspica without changing your global editor:
+PERSPICA_EDITOR=zed perspica --web
+```
+
+Selection order: `--editor`, `PERSPICA_EDITOR`, `VISUAL`, `EDITOR`, then the
+operating system's default application for the file type. Each setting is a
+**single executable name or path**, not a shell command; paths with spaces work
+when quoted. To supply editor flags or open a terminal editor, configure an
+executable wrapper script. Bare `nvim`, `vim`, `vi` and `nano` need a terminal
+and produce guidance rather than starting invisibly from the web server.
+
+Only regular, non-binary new-side files in the current review can be opened.
+Deleted or missing files, symlinks, and files whose on-disk contents differ from
+the reviewed version are unavailable. This also prevents a historical review
+from opening a different version at misleading line numbers. Refresh/restart
+the review after editing. Renamed files open at their new path. File-pair reviews
+resolve paths from the directory where you ran Perspica; Git reviews use the
+reviewed repository root.
+
+Launch errors appear beside the button. A successful request confirms the
+launcher was started, not that the editor displayed a window; long-running
+editors continue independently. Saved `--format html` reviews omit these local
+backend actions. The browser can select only a reviewed file/change index, never
+an executable or arbitrary filesystem path.
+
 ## What you get
 
 **Limited Noise.** Formatting, comment-only edits, lines that differ only by a rename, code moved unchanged, generated and vendored files are tagged and collapsed, so the lines that carry real changes stand out. Tests and docs are their own tier.
