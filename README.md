@@ -80,6 +80,30 @@ perspica --pr 123 --format html           # the viewer as one file to share, wit
 
 Everything above works on its own. The optional LLM analysis (`-s`, or **Analyze…** in the viewer) runs through Claude Code, an API key or Ollama; see [LLM analysis](#llm-analysis) for setup. Alternatively you can ask your coding assistant to run it for you.
 
+### View preferences and local review comments
+
+The **View** popup includes an **Animations** toggle for smooth scrolling,
+transitions, and feedback effects. The preference is saved in your browser.
+Without an explicit choice, Perspica follows your operating system’s
+reduced-motion setting. Keyboard navigation stays instant.
+
+Click a diff line number to write a review comment. **Shift-click** another
+line number to select a range on the **same file and old/new side**; code text
+remains selectable as usual. Save with **Ctrl/⌘+Enter**, or cancel with **Escape**.
+Saved comments have **Edit**, **Delete**, and **Copy prompt** actions.
+
+The header’s **Comments** button lists every saved note, including notes in
+folded hunks, with **Copy all as prompt**. Prompts name the source file and
+original source range, for example `src/Button.tsx:L42-L48`; old-side notes
+use the old path and explicitly say `(old/deleted side)`.
+
+Notes stay in this browser’s local storage, scoped to the exact reviewed
+sources and diff ranges. They survive reloads and layout/order changes, but
+a revised diff starts a separate set of notes. This also works in saved HTML
+viewers; comments are not embedded into an export or synchronized with another
+browser. Nothing is sent to an agent, GitHub, or **Analyze** automatically.
+Copy a prompt when you are ready to share it.
+
 ### Open reviewed files in your editor
 
 The live web viewer has **Open in editor** in each file header and **Open change**

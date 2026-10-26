@@ -10,12 +10,15 @@ const store = {
     },
 };
 
+const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+
 const S = {
     data: null,
     mode: store.get('mode', null),             // 'files' | 'intent' | 'flow'; null: pick from the data
     view: store.get('view', 'unified'),        // 'unified' | 'split'
     hideNoise: store.get('hideNoise', true),
     wrap: store.get('wrap', false),
+    animations: store.get('animations', null), // null: follow the system preference
     tab: 'outline',        // sidebar tab: 'outline' (maps the current review order) | 'changes' (flat index)
     overviewCollapsed: store.get('overviewCollapsed', false),
     onlyUnviewed: false,   // sidebar shows only what isn't marked viewed
@@ -45,8 +48,9 @@ let E = new Map();            // entry id → entry
 let nameIndex = null;         // escaped item name → entry id, for links in model text
 let instantScroll = false;    // set while a keyboard shortcut (or a restore) moves the view
 
+function animationsEnabled() { return typeof S.animations === 'boolean' ? S.animations : !reducedMotion.matches; }
 // Smooth scrolls only run in a visible tab; a hidden one would never get there.
-function scrollBehavior() { return instantScroll || document.visibilityState === 'hidden' ? 'auto' : 'smooth'; }
+function scrollBehavior() { return !animationsEnabled() || instantScroll || document.visibilityState === 'hidden' ? 'auto' : 'smooth'; }
 let entryHunks = new Map();   // entry id → [{fi, hi}]
 let testIds = new Set();      // entry ids that are changes to test code
 let fileByPath = new Map();   // path → fi
@@ -96,6 +100,7 @@ const NOISE_LABEL = { formatting: 'formatting only', comment: 'comments only', r
 // --- Init ---
 async function init() {
     applyBodyClasses();
+    applyAnimations();
     // A saved page carries its data. Otherwise ask the local server.
     const embedded = document.getElementById('perspica-data');
     S.static = !!embedded;
@@ -113,6 +118,7 @@ async function init() {
     S.changedSinceViewed = store.get('changed:' + key, {});
     S.quiz = store.get('quiz:' + key, {});
     derive();
+    await reviewComments.load();
     // Drop "viewed" marks for files whose diff changed since they were marked.
     for (const [path, sig] of Object.entries(S.viewed)) {
         const fi = fileByPath.get(path);
@@ -905,6 +911,7 @@ function applyFilter(q) {
 
 // --- Main pane ---
 function renderMain(keepScroll) {
+    reviewComments.parkComposer();
     const container = document.getElementById('diff-scroll');
     const y = window.scrollY;
     document.body.classList.toggle('split-view', viewMode() === 'split');
@@ -1111,6 +1118,7 @@ function renderSectionBody(section) {
     }
     body.innerHTML = intro + html;
     body.querySelectorAll('.hunk').forEach(h => hunkObserver?.observe(h));
+    reviewComments.attachComposer();
 }
 
 function renderFileBody(fi) {
@@ -1215,7 +1223,7 @@ function renderHunk(fi, hi, withFile) {
     const body = collapsed
         ? `<div class="noise-row">${n} line${pl(n)} · ${NOISE_LABEL[h.noise] || h.noise} <button class="link-btn" data-show-noise="${key}">show</button></div>`
         : (viewMode() === 'split' ? renderSplitRows(fi, h) : renderUnifiedRows(fi, h));
-    return `<div class="hunk${h.noise ? ' is-noise' : ''}" id="h-${fi}-${hi}" data-hunk="${key}">${head}${body}</div>`;
+    return `<div class="hunk${h.noise ? ' is-noise' : ''}" id="h-${fi}-${hi}" data-hunk="${key}">${head}${body}${reviewComments.hunkHtml(fi, hi)}</div>`;
 }
 
 function rowNoise(c) {
@@ -1240,15 +1248,15 @@ function renderUnifiedRows(fi, h) {
             if (pairable) {
                 const wd = wordDiff(c.content_old || '', next.content_new || '');
                 const [ncls2, ntag2] = rowNoise(next);
-                html += row('del' + ncls, c.old_span?.start_line, '', '−', wordHtml(fi, 'old', c.old_span?.start_line, c.content_old, wd, 'del', lang), ntag, 'o' + c.old_span?.start_line);
-                html += row('add' + ncls2, '', next.new_span?.start_line, '+', wordHtml(fi, 'new', next.new_span?.start_line, next.content_new, wd, 'add', lang), ntag2, 'n' + next.new_span?.start_line);
+                html += row(fi, 'del' + ncls, c.old_span?.start_line, '', '−', wordHtml(fi, 'old', c.old_span?.start_line, c.content_old, wd, 'del', lang), ntag, 'o' + c.old_span?.start_line);
+                html += row(fi, 'add' + ncls2, '', next.new_span?.start_line, '+', wordHtml(fi, 'new', next.new_span?.start_line, next.content_new, wd, 'add', lang), ntag2, 'n' + next.new_span?.start_line);
                 i++;
             } else {
-                html += row('del' + ncls, c.old_span?.start_line, '', '−', hl(fi, 'old', c.old_span?.start_line, c.content_old, lang), ntag, 'o' + c.old_span?.start_line);
+                html += row(fi, 'del' + ncls, c.old_span?.start_line, '', '−', hl(fi, 'old', c.old_span?.start_line, c.content_old, lang), ntag, 'o' + c.old_span?.start_line);
             }
         } else if (c.kind === 'added') {
             const [ncls, ntag] = rowNoise(c);
-            html += row('add' + ncls, '', c.new_span?.start_line, '+', hl(fi, 'new', c.new_span?.start_line, c.content_new, lang), ntag, 'n' + c.new_span?.start_line);
+            html += row(fi, 'add' + ncls, '', c.new_span?.start_line, '+', hl(fi, 'new', c.new_span?.start_line, c.content_new, lang), ntag, 'n' + c.new_span?.start_line);
         }
     }
     return html;
@@ -1261,11 +1269,11 @@ function isSinglePair(items, i) {
 }
 
 function ctxRow(fi, c, lang) {
-    return row('ctx', c.old_span?.start_line, c.new_span?.start_line, ' ', hl(fi, 'new', c.new_span?.start_line, c.content_new ?? c.content_old, lang), '', 'n' + c.new_span?.start_line);
+    return row(fi, 'ctx', c.old_span?.start_line, c.new_span?.start_line, ' ', hl(fi, 'new', c.new_span?.start_line, c.content_new ?? c.content_old, lang), '', 'n' + c.new_span?.start_line);
 }
 
-function row(cls, oldLn, newLn, prefix, code, tag, anchor) {
-    return `<div class="row ${cls}" data-a="${anchor || ''}"><span class="gl">${oldLn || ''}</span><span class="gl">${newLn || ''}</span><span class="pf">${prefix}</span><span class="cd">${code}</span>${tag || ''}</div>`;
+function row(fi, cls, oldLn, newLn, prefix, code, tag, anchor) {
+    return `<div class="row ${cls}" data-a="${anchor || ''}">${reviewComments.gutter(fi, 'old', oldLn)}${reviewComments.gutter(fi, 'new', newLn)}<span class="pf">${prefix}</span><span class="cd">${code}</span>${tag || ''}</div>`;
 }
 
 function renderSplitRows(fi, h) {
@@ -1308,7 +1316,7 @@ function splitRow(fi, r, lang) {
     const L = r.l, R = r.r;
     if (r.t === 'ctx') {
         const code = hl(fi, 'new', R.new_span?.start_line, R.content_new ?? R.content_old, lang);
-        return `<div class="row ctx" data-a="n${R.new_span?.start_line}"><span class="gl">${L.old_span?.start_line || ''}</span><span class="pf"></span><span class="cd">${code}</span><span class="gl mid">${R.new_span?.start_line || ''}</span><span class="pf"></span><span class="cd">${code}</span></div>`;
+        return `<div class="row ctx" data-a="n${R.new_span?.start_line}">${reviewComments.gutter(fi, 'old', L.old_span?.start_line)}<span class="pf"></span><span class="cd">${code}</span>${reviewComments.gutter(fi, 'new', R.new_span?.start_line, 'mid')}<span class="pf"></span><span class="cd">${code}</span></div>`;
     }
     const wd = L && R ? wordDiff(L.content_old || '', R.content_new || '') : null;
     const left = L ? (wd ? wordHtml(fi, 'old', L.old_span?.start_line, L.content_old, wd, 'del', lang) : hl(fi, 'old', L.old_span?.start_line, L.content_old, lang)) : '';
@@ -1316,7 +1324,7 @@ function splitRow(fi, r, lang) {
     const noisy = S.hideNoise && (!L || L.noise) && (!R || R.noise);
     const lc = L ? 'l-del' : 'empty', rc = R ? 'r-add' : 'empty';
     const anchor = R ? 'n' + R.new_span?.start_line : 'o' + L.old_span?.start_line;
-    return `<div class="row${noisy ? ' noise' : ''}" data-a="${anchor}"><span class="gl ${lc}">${L?.old_span?.start_line || ''}</span><span class="pf ${lc}">${L ? '−' : ''}</span><span class="cd ${lc}">${left}</span><span class="gl mid ${rc}">${R?.new_span?.start_line || ''}</span><span class="pf ${rc}">${R ? '+' : ''}</span><span class="cd ${rc}">${right}</span></div>`;
+    return `<div class="row${noisy ? ' noise' : ''}" data-a="${anchor}">${reviewComments.gutter(fi, 'old', L?.old_span?.start_line, lc)}<span class="pf ${lc}">${L ? '−' : ''}</span><span class="cd ${lc}">${left}</span>${reviewComments.gutter(fi, 'new', R?.new_span?.start_line, 'mid ' + rc)}<span class="pf ${rc}">${R ? '+' : ''}</span><span class="cd ${rc}">${right}</span></div>`;
 }
 
 // Keep 3 lines of context around changes; longer runs become an inline expander.
@@ -1349,8 +1357,8 @@ function expandGap(el, dir = 'all') {
         for (let n = a; n <= b; n++) {
             const code = hl(fi, 'new', n, lines[n - 1] ?? '', lang);
             html += viewMode() === 'split'
-                ? `<div class="row ctx"><span class="gl">${n + delta}</span><span class="pf"></span><span class="cd">${code}</span><span class="gl mid">${n}</span><span class="pf"></span><span class="cd">${code}</span></div>`
-                : row('ctx', n + delta, n, ' ', code, '', 'n' + n);
+                ? `<div class="row ctx">${reviewComments.gutter(fi, 'old', n + delta)}<span class="pf"></span><span class="cd">${code}</span>${reviewComments.gutter(fi, 'new', n, 'mid')}<span class="pf"></span><span class="cd">${code}</span></div>`
+                : row(fi, 'ctx', n + delta, n, ' ', code, '', 'n' + n);
         }
         return html;
     };
@@ -1528,6 +1536,184 @@ function jumpSection(dir) {
     const target = dir > 0 ? sections[idx] : sections[Math.max(0, idx - 2)];
     target?.scrollIntoView({ block: 'start', behavior: scrollBehavior() });
 }
+
+// --- Browser-local review comments ---
+const reviewComments = (() => {
+    let comments = [], storageKey = '', draft = null, anchor = null;
+    const composer = () => document.getElementById('comment-composer');
+    const pathFor = (fi, side) => S.data.files[fi][side === 'old' ? 'old_path' : 'new_path'];
+    const reference = c => `${c.path}:L${c.start}${c.end > c.start ? '-L' + c.end : ''}${c.side === 'old' ? ' (old/deleted side)' : ''}`;
+    const prompt = list => 'Please address these review comments:\n\n' + list.map(c => `${reference(c)}\n${c.text}`).join('\n\n');
+    const matches = (c, fi, side, line) => c.path === pathFor(fi, side) && c.side === side && line >= c.start && line <= c.end;
+
+    async function digest(value) {
+        const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
+        return [...new Uint8Array(bytes)].map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+    async function load() {
+        // Include full sources AND source spans: identical changed text can move to other lines.
+        // Hash one file at a time rather than stringify the entire review a second time.
+        const signatures = [];
+        for (let fi = 0; fi < S.data.files.length; fi++) {
+            const f = S.data.files[fi];
+            signatures.push(await digest(JSON.stringify([f.old_path, f.new_path, f.old_source, f.new_source, S.data.results[fi].hunks])));
+        }
+        storageKey = 'comments:' + await digest(JSON.stringify([S.data.source?.label, signatures]));
+        comments = store.get(storageKey, []);
+        render();
+    }
+    function gutter(fi, side, line, cls = '') {
+        if (!line || line < 1) return `<span class="gl ${cls}"></span>`;
+        const selected = draft && matches(draft, fi, side, line);
+        const saved = comments.some(c => matches(c, fi, side, line));
+        return `<button type="button" class="gl comment-line ${cls}${saved ? ' has-comment' : ''}" data-review-line="${line}" data-review-file="${fi}" data-review-side="${side}" aria-pressed="${!!selected}" aria-label="Comment on ${side} line ${line}${saved ? ', has comments' : ''}" title="Comment on ${side} line ${line}; Shift-click to select a range">${line}</button>`;
+    }
+    function card(c) {
+        return `<article class="review-comment"><div class="comment-reference">${esc(reference(c))}</div><p>${esc(c.text)}</p><div class="comment-actions"><button class="plain-btn" data-comment-edit="${c.id}">Edit</button><button class="plain-btn" data-comment-copy="${c.id}">Copy prompt</button><button class="plain-btn" data-comment-delete="${c.id}">Delete</button></div></article>`;
+    }
+    function thread(fi, hi) {
+        const h = S.data.results[fi].hunks[hi];
+        return comments.filter(c => {
+            const range = c.side === 'old' ? h.old_range : h.new_range;
+            return c.path === pathFor(fi, c.side) && c.start <= range.end && c.end >= range.start;
+        }).map(card).join('');
+    }
+    function hunkHtml(fi, hi) {
+        return `<div class="review-thread" data-comment-thread="${fi}:${hi}">${thread(fi, hi)}</div>`;
+    }
+    function render() {
+        document.getElementById('comments-btn').textContent = `Comments (${comments.length})`;
+        document.getElementById('comments-list').innerHTML = comments.length ? comments.map(card).join('') : '<p class="section-note">No comments yet. Click a line number, then Shift-click another on the same side to select a range. Your notes stay in this browser.</p>';
+        document.getElementById('comments-copy-all').disabled = !comments.length;
+        document.querySelectorAll('[data-comment-thread]').forEach(el => {
+            const [fi, hi] = el.dataset.commentThread.split(':').map(Number);
+            el.innerHTML = thread(fi, hi);
+        });
+        highlight();
+    }
+    function persist() {
+        // Unlike a display preference, losing a saved note needs visible feedback.
+        try { localStorage.setItem('perspica:' + storageKey, JSON.stringify(comments)); }
+        catch { toast('Comments could not be saved in this browser. Copy them before closing this page.', 'error'); }
+        render();
+    }
+    function highlight() {
+        document.querySelectorAll('[data-review-line]').forEach(el => {
+            const fi = +el.dataset.reviewFile, side = el.dataset.reviewSide, line = +el.dataset.reviewLine;
+            el.setAttribute('aria-pressed', String(!!draft && matches(draft, fi, side, line)));
+            const saved = comments.some(c => matches(c, fi, side, line));
+            el.classList.toggle('has-comment', saved);
+            el.setAttribute('aria-label', `Comment on ${side} line ${line}${saved ? ', has comments' : ''}`);
+        });
+    }
+    function placeComposer(parent, before = null) {
+        const form = composer();
+        if (!form || before === form) return;
+        const focused = form.contains(document.activeElement) ? document.activeElement : null;
+        parent.insertBefore(form, before);
+        focused?.focus({ preventScroll: true });
+    }
+    function parkComposer() {
+        placeComposer(document.getElementById('comment-home'));
+    }
+    function attachComposer() {
+        if (!draft || !composer()) return;
+        const fi = S.data.files.findIndex(f => f[draft.side === 'old' ? 'old_path' : 'new_path'] === draft.path);
+        const end = document.querySelector(`[data-review-file="${fi}"][data-review-side="${draft.side}"][data-review-line="${draft.end}"]`);
+        // Folded context/sections must not hide the editor opened from the comments panel.
+        // Unrelated lazy renders must not move an already-placed form and steal input focus.
+        const row = end?.getClientRects().length ? end.closest('.row') : null;
+        if (row && row.nextElementSibling !== composer()) placeComposer(row.parentElement, row.nextSibling);
+    }
+    function closeComposer() {
+        composer()?.remove(); draft = null; anchor = null; highlight();
+    }
+    function openComposer(comment) {
+        const text = composer()?.querySelector('textarea').value ?? comment.text ?? '';
+        composer()?.remove();
+        draft = { ...comment, text };
+        const form = document.createElement('form');
+        form.id = 'comment-composer'; form.className = 'comment-composer';
+        form.innerHTML = `<label for="comment-text">${esc(reference(draft))}</label><p class="comment-hint">Shift-click a line number on the same file and side to extend the range. Ctrl/⌘+Enter saves; Escape cancels.</p><textarea id="comment-text" rows="3" placeholder="Describe what the agent should change…" aria-describedby="comment-error"></textarea><p id="comment-error" role="status"></p><div class="comment-actions"><button class="accent-btn" type="submit">Save comment</button><button class="plain-btn" type="button" data-comment-cancel>Cancel</button></div>`;
+        form.querySelector('textarea').value = draft.text;
+        form.addEventListener('submit', e => {
+            e.preventDefault();
+            const input = form.querySelector('textarea'), text = input.value.trim();
+            if (!text) {
+                input.setAttribute('aria-invalid', 'true');
+                form.querySelector('#comment-error').textContent = 'Write a comment before saving.';
+                input.focus(); return;
+            }
+            const saved = { ...draft, id: draft.id || crypto.randomUUID(), text };
+            const index = comments.findIndex(c => c.id === saved.id);
+            if (index < 0) comments.push(saved); else comments[index] = saved;
+            closeComposer(); persist();
+            document.getElementById('comments-btn').focus();
+        });
+        form.addEventListener('keydown', e => {
+            if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); form.requestSubmit(); }
+        });
+        document.getElementById('comment-home').appendChild(form);
+        attachComposer();
+        highlight();
+        form.querySelector('textarea').focus({ preventScroll: true });
+        form.scrollIntoView({ block: 'nearest', behavior: scrollBehavior() });
+    }
+    function cancel() {
+        closeComposer(); document.getElementById('comments-btn').focus();
+    }
+    function selectLine(button, extend) {
+        const fi = +button.dataset.reviewFile, side = button.dataset.reviewSide, line = +button.dataset.reviewLine;
+        const path = pathFor(fi, side);
+        if (extend && anchor && (anchor.fi !== fi || anchor.side !== side)) {
+            toast('A comment range must stay in the same file and on the same side.'); return;
+        }
+        if (draft?.id || (!extend && draft)) {
+            toast('Save or cancel this comment before starting another. Shift-click to extend its range.'); return;
+        }
+        if (!extend || !anchor) anchor = { fi, side, line };
+        openComposer({ path, side, start: Math.min(anchor.line, line), end: Math.max(anchor.line, line) });
+    }
+    function showPanel(open) {
+        const panel = document.getElementById('comments-panel');
+        panel.classList.toggle('hidden', !open);
+        document.getElementById('comments-btn').setAttribute('aria-expanded', String(open));
+        (open ? panel : document.getElementById('comments-btn')).focus();
+    }
+    async function copy(list) {
+        try { await navigator.clipboard.writeText(prompt(list)); toast('Review prompt copied.'); }
+        catch { toast('Could not copy. Select and copy the comments below instead.', 'error'); showPanel(true); }
+    }
+    function listen() {
+        document.getElementById('comments-btn').addEventListener('click', () => showPanel(document.getElementById('comments-panel').classList.contains('hidden')));
+        document.getElementById('comments-panel').addEventListener('keydown', e => {
+            if (e.key === 'Escape') { e.preventDefault(); showPanel(false); }
+        });
+        document.getElementById('comments-copy-all').addEventListener('click', () => copy(comments));
+        document.addEventListener('click', e => {
+            const line = e.target.closest('[data-review-line]');
+            if (line) { selectLine(line, e.shiftKey); return; }
+            if (e.target.closest('[data-comment-cancel]')) { cancel(); return; }
+            const edit = e.target.closest('[data-comment-edit]');
+            if (edit) {
+                if (draft) { toast('Save or cancel the current comment first.'); return; }
+                const comment = comments.find(c => c.id === edit.dataset.commentEdit);
+                openComposer(comment); return;
+            }
+            const copyButton = e.target.closest('[data-comment-copy]');
+            if (copyButton) { copy(comments.filter(c => c.id === copyButton.dataset.commentCopy)); return; }
+            const remove = e.target.closest('[data-comment-delete]');
+            if (remove) {
+                const id = remove.dataset.commentDelete;
+                if (draft?.id === id) closeComposer();
+                comments = comments.filter(c => c.id !== id); persist();
+                document.getElementById('comments-btn').focus();
+            }
+        });
+    }
+    return { load, gutter, hunkHtml, parkComposer, attachComposer, listen };
+})();
 
 // --- Reviewed state ---
 function fileSignature(fi) {
@@ -2101,7 +2287,7 @@ svg text{font-family:var(--font);font-size:12px;fill:var(--fg)}
 svg .k-mono{font-family:var(--mono)}
 svg .k-node{fill:var(--bg);stroke:var(--border);stroke-width:1}
 svg .k-edge{stroke:var(--fg-muted);stroke-width:1.25;fill:none}
-@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}`;
+:root[data-animations="false"],:root[data-animations="false"] *,:root[data-animations="false"] ::before,:root[data-animations="false"] ::after{transition:none!important;animation:none!important;scroll-behavior:auto!important}`;
 const LEARN_KIT_JS = `window.Kit={steps(total,show,opts={}){if(Kit._stop)Kit._stop();let i=Math.min(opts.start||0,total-1),timer=0;const ms=opts.interval||1200;
 const q=n=>document.querySelector('[data-kit="'+n+'"]');
 const sync=()=>{const p=q('play');if(p)p.textContent=timer?'Pause':(i>=total-1?'Replay':'Play');const c=q('count');if(c)c.textContent=(i+1)+' / '+total;};
@@ -2147,12 +2333,12 @@ function frameDoc(html) {
 addEventListener('error',e=>fail(e.message||'script error'));addEventListener('unhandledrejection',()=>fail('unhandled promise rejection'));
 addEventListener('load',()=>setTimeout(()=>{const b=document.body;const drawn=b&&(b.innerText.trim().length>0||[...b.querySelectorAll('svg,canvas,img')].some(el=>{const r=el.getBoundingClientRect();return r.width*r.height>100;}));if(!drawn)fail('nothing drawn');settled=true;},800));})()<\/script>`;
     // Our head goes first, so the policy and the watcher apply before any of the model's markup runs.
-    const head = `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${policy}">${watcher}<style>:root{color-scheme:${cs.colorScheme || 'dark'};${vars}}html,body{margin:0;background:transparent;color:var(--fg);font:13px/1.45 var(--font)}\n${LEARN_KIT_CSS}</style><script>${LEARN_KIT_JS}<\/script></head>`;
+    const head = `<!doctype html><html data-animations="${animationsEnabled()}"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${policy}">${watcher}<style>:root{color-scheme:${cs.colorScheme || 'dark'};${vars}}html,body{margin:0;background:transparent;color:var(--fg);font:13px/1.45 var(--font)}\n${LEARN_KIT_CSS}</style><script>${LEARN_KIT_JS}<\/script></head>`;
     // Its own policy would stack on ours and could block its own script. A refresh could navigate the frame away.
     const body = html.replace(/^\s*<!doctype[^>]*>/i, '').replace(/<meta[^>]*http-equiv\s*=\s*["']?(refresh|content-security-policy)[^>]*>/gi, '');
     // The piece reports its height, so the frame fits it without a scrollbar.
     // It also passes on perspica's shortcut keys it didn't use itself, so they work after a click inside it.
-    const sizer = `<script>(()=>{const post=()=>parent.postMessage({perspicaFrameHeight:Math.ceil(document.documentElement.getBoundingClientRect().height)},'*');new ResizeObserver(post).observe(document.documentElement);addEventListener('load',post);post();
+    const sizer = `<script>(()=>{addEventListener('message',e=>{if(e.source===parent&&typeof e.data?.perspicaAnimations==='boolean')document.documentElement.dataset.animations=String(e.data.perspicaAnimations);});const post=()=>parent.postMessage({perspicaFrameHeight:Math.ceil(document.documentElement.getBoundingClientRect().height)},'*');new ResizeObserver(post).observe(document.documentElement);addEventListener('load',post);post();
 addEventListener('keydown',e=>{if(e.defaultPrevented||e.metaKey||e.ctrlKey||e.altKey||/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)||!'lejkqtb?'.includes(e.key))return;parent.postMessage({perspicaKey:e.key},'*');});})()<\/script>`;
     return head + body + sizer;
 }
@@ -2418,6 +2604,16 @@ function setWrap(on) {
     applyBodyClasses();
     document.getElementById('wrap-toggle').checked = on;
 }
+function setAnimations(on) {
+    S.animations = on; store.set('animations', on);
+    applyAnimations();
+}
+function applyAnimations() {
+    const on = animationsEnabled();
+    document.documentElement.dataset.animations = String(on);
+    document.getElementById('animations-toggle').checked = on;
+    document.querySelectorAll('iframe.learn-frame').forEach(f => f.contentWindow.postMessage({ perspicaAnimations: on }, '*'));
+}
 function toggleViewMenu() {
     const menu = document.getElementById('view-menu');
     const open = menu.classList.toggle('hidden') === false;
@@ -2453,6 +2649,7 @@ function toggleTheme() {
 
 // --- Events ---
 function setupListeners() {
+    reviewComments.listen();
     document.getElementById('mode-toggle').addEventListener('click', e => { const b = e.target.closest('[data-mode]'); if (b) setMode(b.dataset.mode); });
     document.getElementById('area-toggle').addEventListener('click', e => { const b = e.target.closest('[data-area]'); if (b) setArea(b.dataset.area); });
     window.addEventListener('message', onFrameMessage);
@@ -2460,6 +2657,8 @@ function setupListeners() {
     document.getElementById('noise-toggle').addEventListener('change', e => setHideNoise(e.target.checked));
     document.getElementById('analyze-btn').addEventListener('click', () => { if (!S.static) startAnalysis(); });
     document.getElementById('wrap-toggle').addEventListener('change', e => setWrap(e.target.checked));
+    document.getElementById('animations-toggle').addEventListener('change', e => setAnimations(e.target.checked));
+    reducedMotion.addEventListener('change', applyAnimations);
     document.getElementById('theme-toggle').addEventListener('click', () => { toggleTheme(); closeViewMenu(); });
     document.getElementById('help-btn').addEventListener('click', () => document.getElementById('shortcut-modal').classList.toggle('hidden'));
     document.getElementById('view-btn').addEventListener('click', e => { e.stopPropagation(); toggleViewMenu(); });
@@ -2524,7 +2723,7 @@ function setupListeners() {
         if (rq) {
             S.overviewCollapsed = false; S.askedOpen = true; renderOverview();
             const li = document.getElementById('req-' + rq.dataset.req);
-            if (li) { li.scrollIntoView({ block: 'center', behavior: 'smooth' }); li.classList.remove('flash'); void li.offsetWidth; li.classList.add('flash'); }
+            if (li) { li.scrollIntoView({ block: 'center', behavior: scrollBehavior() }); li.classList.remove('flash'); void li.offsetWidth; li.classList.add('flash'); }
             return;
         }
         const copy = t.closest('[data-copy]');
@@ -2592,6 +2791,7 @@ function setupListeners() {
         if (g) setGroupReviewed(+g.dataset.groupReviewed, g.checked);
     });
     document.addEventListener('keydown', e => {
+        if (e.defaultPrevented || e.target.closest?.('[data-review-line], #comment-composer, #comments-panel')) return;
         if (e.key === 'Enter' && e.target.matches('.expand[data-expand]')) { expandGap(e.target); return; }
         const modalOpen = [...document.querySelectorAll('.modal')].find(m => !m.classList.contains('hidden'));
         if (e.key === 'Escape') {
@@ -2601,8 +2801,10 @@ function setupListeners() {
             if (e.target.id === 'toc-filter') { e.target.value = ''; applyFilter(''); e.target.blur(); return; }
             if (e.target.tagName === 'INPUT') { e.target.blur(); return; }
         }
+
         if (modalOpen || e.metaKey || e.ctrlKey || e.altKey) return;
         if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
+
         if (S.area === 'learn') {
             const learnKeys = {
                 l: () => setArea('review'), j: () => stepConcept(1), k: () => stepConcept(-1),

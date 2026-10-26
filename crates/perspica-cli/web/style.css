@@ -184,6 +184,29 @@ body { overflow-x: hidden; }
 .link-btn:hover { text-decoration: underline; }
 
 
+/* Local review comments */
+.comments-panel { margin: 16px; padding: 16px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-1); }
+.comment-panel-head, .comment-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.comment-panel-head { justify-content: space-between; gap: 16px; }
+.comment-panel-head h2 { font-size: 15px; color: var(--text-0); }
+.comment-hint { margin-block: 8px; font-size: var(--font-size-sm); color: var(--text-2); }
+.review-comment { padding: 12px; margin-block: 8px; border: 1px solid var(--border); border-inline-start: 3px solid var(--accent); border-radius: var(--radius); background: var(--bg-1); }
+.comment-reference, .comment-composer label { color: var(--text-0); font-family: var(--font-mono); font-size: var(--font-size-sm); overflow-wrap: anywhere; }
+.review-comment p { white-space: pre-wrap; overflow-wrap: anywhere; margin-block: 8px 12px; max-width: 75ch; }
+.review-thread, .comment-composer { position: sticky; left: 0; width: var(--pane-w, 100%); white-space: normal; }
+.review-thread:empty { display: none; }
+.comment-composer { padding: 12px; border: 1px solid var(--accent); background: var(--bg-1); border-radius: var(--radius); }
+.comment-composer textarea { display: block; width: 100%; min-height: 80px; resize: vertical; padding: 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-0); color: var(--text-0); font: inherit; }
+#comment-error { color: var(--risk-high); margin-block: 8px; }
+.row button.comment-line { font-family: inherit; border: none; border-radius: 0; background: inherit; cursor: pointer; }
+.row .comment-line[aria-pressed="true"] { background: var(--accent-muted); color: var(--accent); box-shadow: inset 3px 0 var(--accent); }
+.row .comment-line.has-comment { text-decoration: underline; text-decoration-color: var(--accent); text-decoration-thickness: 2px; text-underline-offset: 3px; }
+@media (hover: hover) {
+    .row .comment-line:hover { color: var(--accent); background: var(--accent-muted); }
+}
+@media (pointer: coarse) {
+    .row .comment-line { min-height: 44px; }
+}
 /* Layout */
 #app { display: flex; align-items: flex-start; }
 #diff-panel { flex: 1; min-width: 0; }
@@ -707,6 +730,11 @@ body.area-learn #sidebar-tabs, body.area-learn #toc-filter-wrap { display: none 
     .pill-btn { padding: 4px 7px; font-size: 12px; }
     .viewed-toggle span { display: none; }
 }
+:root[data-animations="false"], :root[data-animations="false"] *, :root[data-animations="false"] ::before, :root[data-animations="false"] ::after {
+    transition: none !important; animation: none !important; scroll-behavior: auto !important;
+}
 @media (prefers-reduced-motion: reduce) {
-    * { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
+    :root:not([data-animations="true"]), :root:not([data-animations="true"]) *, :root:not([data-animations="true"]) ::before, :root:not([data-animations="true"]) ::after {
+        transition: none !important; animation: none !important; scroll-behavior: auto !important;
+    }
 }
