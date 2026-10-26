@@ -23,6 +23,7 @@ const S = {
     groupsReviewed: {},    // group key → true (persisted per source)
     expandedNoise: new Set(), // "fi:hi" hunks the user opened despite hideNoise
     collapsedSections: new Set(),
+    foldedCalls: new Set(), // reading-order step identities; independent of entry-list folding
     currentHunk: -1,
     running: false,
     checked: {},
@@ -280,9 +281,16 @@ function buildFlowGroups() {
     const anyTests = d.results.some(r => r.review.test_lines > 0);
     const types = steps.filter(s => s.kind === 'type');
     if (types.length) groups.push({ key: 'flow:types', label: 'Types & data', note: `${types.length} changed type${pl(types.length)} and data definition${pl(types.length)} the code works with. Read these first.`, ids: types.flatMap(s => s.entry_ids), subs: [] });
+    const callers = [];
     for (const s of steps) {
         if (s.kind !== 'function' || s.repeat) continue;
-        groups.push({ key: `flow:${s.file}:${s.name}`, label: s.name, ids: s.entry_ids, subs: [], flow: s, reach: reach.get(s.file + '\0' + s.name), anyTests });
+        while (callers.length && groups[callers.at(-1)].flow.depth >= s.depth) callers.pop();
+        const flowParent = callers.at(-1);
+        if (flowParent !== undefined) groups[flowParent].flowHasChildren = true;
+        // Entry ids distinguish same-named definitions in the same file.
+        const flowKey = JSON.stringify([s.file, s.name, s.entry_ids]);
+        callers.push(groups.length);
+        groups.push({ key: `flow:${s.file}:${s.name}`, label: s.name, ids: s.entry_ids, subs: [], flow: s, flowKey, flowParent, reach: reach.get(s.file + '\0' + s.name), anyTests });
     }
     const others = steps.filter(s => s.kind === 'other');
     if (others.length) groups.push({ key: 'flow:other', label: 'Other changed code', note: 'Constants, variables and top-level statements.', ids: others.flatMap(s => s.entry_ids), subs: [] });
@@ -646,7 +654,7 @@ function renderSidebar() {
         const n = shows === 'files' ? S.data.files.length : groups.filter(g => !g.flow || !g.flow.repeat).length;
         const unit = shows === 'files' ? 'file' : S.mode === 'flow' ? 'step' : 'group';
         const hint = shows === 'files' ? ''
-            : S.mode === 'flow' ? 'Entry points first, then the changed functions they call.'
+            : S.mode === 'flow' ? 'Entry points first, then the changed functions they call. Use the arrow beside a function to fold its calls.'
             : hasLlmGroups() ? 'What each set of changes is for, in the order to read them.'
             : 'Grouped by kind of change, most important first. <button class="link-btn" data-action="analyze">Analyze…</button> groups them by intent.';
         const caption = `<div class="toc-caption"><div><b>${modeName()}</b> · ${n} ${unit}${pl(n)}</div>${hint ? `<div class="hint">${hint}</div>` : ''}</div>`;
@@ -760,7 +768,8 @@ function renderGroupList() {
         html += `<div class="toc-group${reviewed ? ' reviewed' : ''}${folded ? ' collapsed' : ''}" data-gi="${gi}">
             <div class="toc-head" data-jump-group="${gi}" title="Go to this group">
                 <span class="chev" data-group-toggle title="Show entries">▼</span><span class="num">${gi + 1}</span>
-                <span class="title${g.flow ? ' flow-title' : ''}"${g.flow ? ` style="padding-left:${Math.min(g.flow.depth, 6) * 10}px" title="${esc(g.label)} · ${esc(g.flow.file)}"` : ''}>${g.flow ? `<span class="flow-name">${g.flow.depth ? '<span class="flow-depth">└ </span>' : ''}${flowLabel(g.label)}</span><span class="flow-file">${esc(baseName(g.flow.file))}</span>` : `<span class="t">${richText(g.label, false)}</span>`}${g.note && !g.flow ? `<span class="note" title="${esc(g.note)}">${richText(g.note, false)}</span>` : ''}</span>
+                ${g.flow ? `<span class="call-branch" style="margin-inline-start:${Math.min(g.flow.depth, 6) * 10}px">${g.flowHasChildren ? `<button type="button" class="call-toggle" data-call-toggle="${gi}" aria-expanded="true" aria-label="Collapse calls from ${esc(g.label)}" title="Collapse calls">▼</button>` : `<span class="call-leaf" aria-hidden="true">${g.flow.depth ? '└' : ''}</span>`}</span>` : ''}
+                <span class="title${g.flow ? ' flow-title' : ''}"${g.flow ? ` title="${esc(g.label)} · ${esc(g.flow.file)}"` : ''}>${g.flow ? `<span class="flow-name">${flowLabel(g.label)}</span><span class="flow-file">${esc(baseName(g.flow.file))}</span>` : `<span class="t">${richText(g.label, false)}</span>`}${g.note && !g.flow ? `<span class="note" title="${esc(g.note)}">${richText(g.note, false)}</span>` : ''}</span>
                 ${riskHtml(g.risk)}${g.origin === 'autonomous' ? originChip(g) : ''}
                 <span class="n" title="+${st.add} −${st.del} lines">${g.ids.length || hunks.length}</span>
             </div>
@@ -835,6 +844,36 @@ function renderChangeList() {
     return html || '<div class="toc-empty">No changes.</div>';
 }
 
+/** Apply call folds without rebuilding rows, so the toggle keeps keyboard focus. */
+function applyCallFolds(filtering) {
+    if (sidebarShows() !== 'groups') return;
+    const hidden = new Set();
+    document.querySelectorAll('#toc-content .toc-group[data-gi]').forEach(row => {
+        const gi = +row.dataset.gi, g = groups[gi];
+        const parent = groups[g.flowParent];
+        const hide = !filtering && !!parent && (hidden.has(g.flowParent) || S.foldedCalls.has(parent.flowKey));
+        if (hide) hidden.add(gi);
+        row.classList.toggle('call-hidden', hide);
+        const toggle = row.querySelector('[data-call-toggle]');
+        if (!toggle) return;
+        const expanded = filtering || !S.foldedCalls.has(g.flowKey);
+        toggle.setAttribute('aria-expanded', String(expanded));
+        toggle.disabled = filtering;
+        toggle.setAttribute('aria-label', filtering ? `Calls expanded while filtering: ${g.label}` : `${expanded ? 'Collapse' : 'Expand'} calls from ${g.label}`);
+        toggle.title = filtering ? 'Clear the filter to fold calls' : `${expanded ? 'Collapse' : 'Expand'} calls`;
+    });
+}
+
+/** Explicit navigation opens only the ancestors needed to show its sidebar row. */
+function revealCallGroup(gi) {
+    let parent = groups[gi]?.flowParent;
+    while (parent !== undefined) {
+        S.foldedCalls.delete(groups[parent].flowKey);
+        parent = groups[parent].flowParent;
+    }
+    applyCallFolds(!!document.getElementById('toc-filter').value.trim());
+}
+
 function applyFilter(q) {
     q = (q || '').toLowerCase().trim();
     const root = document.getElementById('toc-content');
@@ -859,6 +898,8 @@ function applyFilter(q) {
             if (shown) g.classList.remove('collapsed');
             if (n) n.textContent = `${shown}/${g.querySelectorAll('.entry').length}`;
         });
+        // Search temporarily reveals matching descendants; clearing it restores the folds.
+        applyCallFolds(!!q);
     }
 }
 
@@ -1381,8 +1422,12 @@ function markCurrent() {
         hunk?.classList.add('current');
     }
     const shows = sidebarShows();
+    let gi = hunkGroup.get(k);
+    for (let parent = groups[gi]?.flowParent; parent !== undefined; parent = groups[parent].flowParent) {
+        if (S.foldedCalls.has(groups[parent].flowKey) && !document.getElementById('toc-filter').value.trim()) gi = parent;
+    }
     const row = shows === 'files' ? document.querySelector(`.tree-file[data-fi="${fi}"]`)
-        : shows === 'groups' ? document.querySelector(`.toc-group[data-gi="${hunkGroup.get(k)}"] > .toc-head`)
+        : shows === 'groups' ? document.querySelector(`.toc-group[data-gi="${gi}"] > .toc-head`)
         : null;
     if (!row || row.classList.contains('current')) return;
     document.querySelectorAll('#toc-content .current').forEach(r => r.classList.remove('current'));
@@ -1407,6 +1452,7 @@ function revealHunk(fi, hi, line, flash = true, side = 'new') {
     const secKey = grouped() ? 'g' + hunkGroup.get(fi + ':' + hi) : 'f' + fi;
     const section = document.getElementById('s-' + secKey);
     if (!section) return;
+    if (S.mode === 'flow') revealCallGroup(hunkGroup.get(fi + ':' + hi));
     if (section.classList.contains('collapsed')) { section.classList.remove('collapsed'); S.collapsedSections.delete(secKey); }
     renderAbove(section);
     renderSectionBody(section);
@@ -1541,6 +1587,7 @@ function currentGroupIdx() {
 function jumpToGroup(gi, instant = false) {
     const section = document.getElementById('s-g' + gi);
     if (!section) return;
+    if (S.mode === 'flow') revealCallGroup(gi);
     if (section.classList.contains('collapsed') && !S.groupsReviewed[groups[gi].key]) {
         section.classList.remove('collapsed'); S.collapsedSections.delete('g' + gi);
     }
@@ -2517,6 +2564,14 @@ function setupListeners() {
         if (entry) {
             if (S.area === 'learn') { setArea('review'); setTimeout(() => jumpToEntry(+entry.dataset.entry), 0); return; }
             jumpToEntry(+entry.dataset.entry); return;
+        }
+        const ct = t.closest('[data-call-toggle]');
+        if (ct) {
+            const key = groups[+ct.dataset.callToggle].flowKey;
+            if (S.foldedCalls.has(key)) S.foldedCalls.delete(key); else S.foldedCalls.add(key);
+            applyCallFolds(false);
+            markCurrent();
+            return;
         }
         const gt = t.closest('[data-group-toggle]');
         if (gt) { gt.closest('.toc-group').classList.toggle('collapsed'); return; }

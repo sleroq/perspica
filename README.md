@@ -127,7 +127,7 @@ an executable or arbitrary filesystem path.
 - calls to a changed function that weren't updated (only for changes that can actually break a caller);
 - code the change left unused.
 
-**A reading order.** Changed code from the entry points down to the changed functions they call (the order you'd want someone to walk you through it), and which of them the changed tests actually reach, with the call path.
+**A reading order.** Changed code from the entry points down to the changed functions they call (the order you'd want someone to walk you through it), and which of them the changed tests actually reach, with the call path. In the sidebar, use the arrow beside a caller's name to fold or expand its calls; the leftmost arrow still shows that group's change entries. Nested folds survive switching review order. Search temporarily reveals matching descendants, and jumping to a change opens its callers.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/reading-order-dark.jpg">
