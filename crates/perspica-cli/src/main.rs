@@ -99,13 +99,17 @@ struct Cli {
     #[arg(long)]
     api_key: Option<String>,
 
-    /// With --api-key: anthropic (default) or openai. `ollama` needs no key and uses a local model
+    /// LLM provider: anthropic (default with --api-key), openai, or ollama (local, no key)
     #[arg(long)]
     provider: Option<String>,
 
     /// Model to use instead of the provider's default
     #[arg(long)]
     model: Option<String>,
+
+    /// OpenAI-compatible API base URL, including /v1 (overrides OPENAI_BASE_URL)
+    #[arg(long)]
+    base_url: Option<String>,
 
     /// Don't read the Claude Code or Codex sessions behind your change (your prompts are
     /// shown, and sent with -s). Never read for other people's changes
@@ -352,7 +356,7 @@ fn main() {
     // Optional LLM analysis
     let rt = tokio::runtime::Runtime::new().unwrap_or_else(|e| fail(e));
     let wants_llm = cli.summarize || cli.deep;
-    let detect = llm::Detect { api_key: cli.api_key.clone(), provider: cli.provider.clone(), model: cli.model.clone() };
+    let detect = llm::Detect { api_key: cli.api_key.clone(), provider: cli.provider.clone(), model: cli.model.clone(), base_url: cli.base_url.clone() };
     let provider = if wants_llm || format == "web" {
         rt.block_on(detect.run())
     } else {
