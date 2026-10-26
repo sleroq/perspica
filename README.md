@@ -125,6 +125,22 @@ If none is found, **Analyze…** in the viewer shows these steps, and *Check aga
 
 The default Claude model is `claude-opus-5-5`; `--model claude-sonnet-5-5` is faster, `claude-haiku-5-5` (or the older `claude-haiku-4-5`) is a quick first pass. What's sent: the list of classified changes and the changed code, never whole files (Thorough may also read definitions and files under 200 lines from the changed files). Analyses are saved per diff in `.git/perspica/`, so reloading or running again doesn't pay for the same analysis twice; `--fresh` reruns. Up to 100,000 characters of changed code are sent (16,000 to a local model). For a bigger change, **Analyze…** says how big it is and offers to send all of it, and `--full-context` does the same in the terminal; otherwise the model is told which files it can't see.
 
+### OpenAI-compatible endpoints
+
+Use `--provider openai` with an API base URL and the model ID accepted by your service:
+
+```bash
+export OPENAI_API_KEY='your-service-api-key'
+export OPENAI_BASE_URL='https://your-service.example/v1'
+perspica --provider openai --model your-model -s
+# Or use the same configuration in the browser:
+perspica --provider openai --model your-model --web
+```
+
+The base URL includes the API version prefix (usually `/v1`), not `/chat/completions`; perspica appends `/chat/completions`. Gateway prefixes such as `https://your-service.example/gateway/v1` and trailing slashes are supported. `--base-url <URL>` overrides `OPENAI_BASE_URL`. Without either, OpenAI uses `https://api.openai.com/v1`. The endpoint is kept when choosing another model in the viewer, including for Learn.
+
+`--provider openai` selects OpenAI even when Anthropic credentials or Claude Code are available; it does not fall back to another provider if its key is missing. Key precedence is `--api-key`, `PERSPICA_API_KEY`, then `OPENAI_API_KEY`. Setting a base URL alone does not select OpenAI. The service must support Chat Completions with bearer-key authentication and the `max_tokens` field. Your changed code and prompts are sent to the configured endpoint when you request LLM analysis; only use a service you trust.
+
 ## Learn
 
 The **Learn** tab, next to Review in the viewer, picks out the concepts you need to understand this change. An architecture change comes first, then an algorithm, a protocol rule or a language feature it depends on. A small change gets one concept and a bigger one up to three. Formatting, renames and changes that need no background get "nothing to learn" instead of filler.
@@ -183,8 +199,9 @@ Options:
   -s, --summarize            Group changes by intent, with risk and a summary, using an LLM. Sends the change list and changed code, never whole files
   -d, --deep                 Thorough analysis: the LLM may first read definitions and small files from the changed files. Slower. Implies -s
       --api-key <API_KEY>    LLM API key (better: set it in the environment, see the README)
-      --provider <PROVIDER>  With --api-key: anthropic (default) or openai. `ollama` needs no key and uses a local model
+      --provider <PROVIDER>  LLM provider: anthropic (default with --api-key), openai, or ollama (local, no key)
       --model <MODEL>        Model to use instead of the provider's default
+      --base-url <BASE_URL>  OpenAI-compatible API base URL, including /v1 (overrides OPENAI_BASE_URL)
       --no-sessions          Don't read the Claude Code or Codex sessions behind your change (your prompts are shown, and sent with -s). Never read for other people's changes
       --fresh                Run the LLM analysis again even if a saved one matches this diff
       --full-context         Send all of the changed code to the LLM, however large. By default perspica sends up to 100,000 characters (16,000 for local models)

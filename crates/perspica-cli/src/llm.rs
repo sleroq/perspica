@@ -395,6 +395,17 @@ impl LlmProvider for AnthropicBearerProvider {
 pub struct OpenAiProvider {
     api_key: String,
     model: String,
+    base_url: String,
+}
+
+impl OpenAiProvider {
+    fn new(api_key: &str, model: Option<&str>, base_url: Option<&str>) -> Self {
+        Self {
+            api_key: api_key.to_string(),
+            model: model.unwrap_or("gpt-4o-mini").to_string(),
+            base_url: base_url.unwrap_or("https://api.openai.com/v1").trim_end_matches('/').to_string(),
+        }
+    }
 }
 
 #[async_trait]
@@ -408,7 +419,7 @@ impl LlmProvider for OpenAiProvider {
         });
 
         let resp = client
-            .post("https://api.openai.com/v1/chat/completions")
+            .post(format!("{}/chat/completions", self.base_url))
             .header("Authorization", format!("Bearer {}", self.api_key))
             .header("content-type", "application/json")
             .json(&body)
@@ -435,7 +446,7 @@ impl LlmProvider for OpenAiProvider {
         "OpenAI"
     }
     fn model(&self) -> &str { &self.model }
-    fn with_model(&self, model: &str) -> Box<dyn LlmProvider> { Box::new(OpenAiProvider { api_key: self.api_key.clone(), model: model.to_string() }) }
+    fn with_model(&self, model: &str) -> Box<dyn LlmProvider> { Box::new(OpenAiProvider { api_key: self.api_key.clone(), model: model.to_string(), base_url: self.base_url.clone() }) }
 }
 
 // --- Ollama ---
@@ -607,18 +618,19 @@ pub struct Detect {
     pub api_key: Option<String>,
     pub provider: Option<String>,
     pub model: Option<String>,
+    pub base_url: Option<String>,
 }
 
 impl Detect {
     pub async fn run(&self) -> Option<Box<dyn LlmProvider>> {
-        detect_provider(self.api_key.as_deref(), self.provider.as_deref(), self.model.as_deref()).await
+        detect_provider(self.api_key.as_deref(), self.provider.as_deref(), self.model.as_deref(), self.base_url.as_deref()).await
     }
 }
 
 /// Auto-detect LLM provider in priority order.
 ///
 /// Detection chain:
-/// 1. Explicit --api-key + --provider flags
+/// 1. Explicit --api-key / --provider flags (OpenAI never falls back to another provider)
 /// 2. PERSPICA_API_KEY env var (with PERSPICA_PROVIDER)
 /// 3. ANTHROPIC_AUTH_TOKEN env var (bearer token, for gateways)
 /// 4. ANTHROPIC_API_KEY env var (direct API key)
@@ -630,11 +642,21 @@ pub async fn detect_provider(
     api_key: Option<&str>,
     provider: Option<&str>,
     model: Option<&str>,
+    base_url: Option<&str>,
 ) -> Option<Box<dyn LlmProvider>> {
+    let base_url = base_url.map(str::to_string).or_else(|| std::env::var("OPENAI_BASE_URL").ok());
+    let base_url = base_url.as_deref();
+
     // 1. Explicit flags
     if let Some(key) = api_key {
         let prov = provider.unwrap_or("anthropic");
-        return Some(make_provider(prov, key, model));
+        return Some(make_provider(prov, key, model, base_url));
+    }
+
+    // An explicit OpenAI choice must not pick up Anthropic credentials or fall back to Claude Code.
+    if provider == Some("openai") {
+        let key = std::env::var("PERSPICA_API_KEY").or_else(|_| std::env::var("OPENAI_API_KEY")).ok()?;
+        return Some(make_provider("openai", &key, model, base_url));
     }
 
     // --provider ollama needs no key: choose the local model even when Claude Code or a key is set up.
@@ -647,7 +669,7 @@ pub async fn detect_provider(
     // 2. PERSPICA_API_KEY
     if let Ok(key) = std::env::var("PERSPICA_API_KEY") {
         let prov = std::env::var("PERSPICA_PROVIDER").unwrap_or_else(|_| "anthropic".to_string());
-        return Some(make_provider(&prov, &key, model));
+        return Some(make_provider(&prov, &key, model, base_url));
     }
 
     // 3. ANTHROPIC_AUTH_TOKEN (bearer token, for LLM gateways)
@@ -668,10 +690,7 @@ pub async fn detect_provider(
 
     // 5. OPENAI_API_KEY
     if let Ok(key) = std::env::var("OPENAI_API_KEY") {
-        return Some(Box::new(OpenAiProvider {
-            api_key: key,
-            model: model.unwrap_or("gpt-4o-mini").to_string(),
-        }));
+        return Some(Box::new(OpenAiProvider::new(&key, model, base_url)));
     }
 
     // 6. Claude Code CLI on PATH (uses whatever login the user has)
@@ -754,12 +773,9 @@ impl Setup {
     }
 }
 
-fn make_provider(provider: &str, key: &str, model: Option<&str>) -> Box<dyn LlmProvider> {
+fn make_provider(provider: &str, key: &str, model: Option<&str>, base_url: Option<&str>) -> Box<dyn LlmProvider> {
     match provider {
-        "openai" => Box::new(OpenAiProvider {
-            api_key: key.to_string(),
-            model: model.unwrap_or("gpt-4o-mini").to_string(),
-        }),
+        "openai" => Box::new(OpenAiProvider::new(key, model, base_url)),
         "ollama" => Box::new(OllamaProvider { model: model.unwrap_or(OLLAMA_SUGGESTED).to_string(), installed: vec![] }),
         _ => Box::new(AnthropicProvider {
             api_key: key.to_string(),
@@ -771,6 +787,46 @@ fn make_provider(provider: &str, key: &str, model: Option<&str>) -> Box<dyn LlmP
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn openai_defaults_and_base_url() {
+        let default = OpenAiProvider::new("test-key", None, None);
+        assert_eq!(default.base_url, "https://api.openai.com/v1");
+        assert_eq!(default.model(), "gpt-4o-mini");
+        for url in ["https://example.com/gateway/v1", "https://example.com/gateway/v1/"] {
+            let custom = OpenAiProvider::new("test-key", Some("custom-model"), Some(url));
+            assert_eq!(custom.base_url, "https://example.com/gateway/v1");
+            assert_eq!(custom.model(), "custom-model");
+        }
+    }
+
+    #[tokio::test]
+    async fn openai_redetection_and_model_change_keep_endpoint_and_key() {
+        use axum::{http::HeaderMap, routing::post, Json, Router};
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base_url = format!("http://{}/gateway/v1/", listener.local_addr().unwrap());
+        let app = Router::new().route("/gateway/v1/chat/completions", post(|headers: HeaderMap, Json(body): Json<serde_json::Value>| async move {
+            assert_eq!(headers["authorization"], "Bearer test-key");
+            assert_eq!(body["model"], "another-model");
+            assert_eq!(body["messages"], serde_json::json!([{"role": "user", "content": "test prompt"}]));
+            assert_eq!(body["max_tokens"], MAX_OUTPUT_TOKENS);
+            Json(serde_json::json!({"choices": [{"message": {"content": "test answer"}}]}))
+        }));
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let detect = Detect {
+            api_key: Some("test-key".into()),
+            provider: Some("openai".into()),
+            model: Some("first-model".into()),
+            base_url: Some(base_url),
+        };
+        for _ in 0..2 {
+            let provider = detect.run().await.unwrap();
+            let changed = provider.with_model("another-model");
+            assert_eq!(changed.complete("test prompt").await.unwrap(), "test answer");
+        }
+        server.abort();
+    }
 
     #[test]
     fn anthropic_text_skips_thinking_blocks() {
