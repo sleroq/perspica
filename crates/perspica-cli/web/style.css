@@ -345,7 +345,15 @@ body.sidebar-collapsed #sidebar { display: none; }
 .toc-head .flow-name { display: flex; min-width: 0; flex: 0 1 auto; }
 .toc-head .flow-owner { overflow: hidden; text-overflow: ellipsis; min-width: 3ch; flex: 0 1 auto; color: var(--text-2); font-weight: 500; }
 .toc-head .flow-method { flex: 0 0 auto; }
-.toc-head .flow-depth { flex: 0 0 auto; }
+.call-branch { display: inline-flex; flex: 0 0 24px; margin-block: -3px; }
+.call-toggle, .call-leaf { display: grid; place-items: center; width: 24px; height: 24px; color: var(--text-3); }
+.call-toggle { border: 0; border-radius: 4px; padding: 0; background: transparent; font-size: 9px; cursor: pointer; }
+.call-toggle[aria-expanded="false"] { transform: rotate(-90deg); }
+.call-toggle:disabled { opacity: .5; cursor: default; }
+@media (hover: hover) {
+    .call-toggle:hover:not(:disabled) { background: var(--bg-3); color: var(--text-0); }
+}
+.call-hidden { display: none !important; }
 .toc-head .flow-title .flow-file { overflow: hidden; text-overflow: ellipsis; flex: 0 10 auto; min-width: 0; font-weight: 400; }
 .flow-file { color: var(--text-3); font-size: var(--font-size-xs); font-family: var(--font-mono); }
 .reach { font-size: var(--font-size-xs); padding: 1px 6px; border-radius: 10px; border: 1px solid var(--border); color: var(--text-2); white-space: nowrap; }
