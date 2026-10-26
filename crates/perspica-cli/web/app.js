@@ -917,6 +917,40 @@ function sectionShell(key, head, intro) {
         ${head}<div class="section-body" data-pending="1">${intro}<div class="placeholder">…</div></div></section>`;
 }
 
+function editorAction(fi, hi) {
+    if (S.static || !S.data.capabilities?.editor) return '';
+    const error = S.data.files[fi].editor_error;
+    if (error && hi !== undefined) return '';
+    const label = hi === undefined ? 'Open in editor' : 'Open change';
+    const id = 'editor-status-' + fi + (hi === undefined ? '' : '-' + hi);
+    return `<span class="editor-action"><button type="button" class="plain-btn editor-btn" data-editor-file="${fi}"${hi === undefined ? '' : ` data-editor-hunk="${hi}"`} aria-describedby="${id}"${error ? ' aria-disabled="true"' : ''} title="${esc('Open ' + S.data.files[fi].new_path + ' in ' + S.data.capabilities.editor)}">${label}</button><span id="${id}" class="editor-status" role="status">${esc(error || '')}</span></span>`;
+}
+
+async function openInEditor(button) {
+    if (button.disabled) return;
+    const status = button.parentElement.querySelector('.editor-status');
+    const file = +button.dataset.editorFile;
+    if (S.data.files[file].editor_error) return;
+    button.disabled = true;
+    status.textContent = 'Launching…';
+    try {
+        const body = { file };
+        if (button.dataset.editorHunk !== undefined) body.hunk = +button.dataset.editorHunk;
+        const response = await fetch('/api/editor/open', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Editor launch failed.');
+        status.textContent = result.message;
+    } catch (error) {
+        status.textContent = 'Could not open in editor: ' + error.message;
+    } finally {
+        button.disabled = false;
+    }
+}
+
 function fileHeadHtml(fi) {
     const f = S.data.files[fi], r = S.data.results[fi];
     const { add, del } = fileCounts(fi);
@@ -939,6 +973,7 @@ function fileHeadHtml(fi) {
         ${f.status === 'R' ? `<span class="from">← ${esc(f.old_path)}</span>` : ''}
         <button class="copy-btn" data-copy="${esc(f.new_path)}" title="Copy path" aria-label="Copy path">${IC.copy}</button>
         ${tags.join('')}
+        ${editorAction(fi)}
         <span class="spacer"></span>
         <span class="stats"><span class="a">+${add}</span><span class="d">−${del}</span></span>
         <label class="viewed-toggle" title="Mark as viewed (v)"><input type="checkbox" data-viewed="${fi}"${viewed ? ' checked' : ''}><span>Viewed</span></label>
@@ -1134,7 +1169,7 @@ function renderHunk(fi, hi, withFile) {
     const onNew = newCount > 0;
     const [a, b] = onNew ? [h.new_range.start, h.new_range.end] : [h.old_range.start, h.old_range.end];
     const lines = `${onNew ? '' : 'old '}L${a}${b > a ? '–' + b : ''}`;
-    const head = `<div class="hunk-head">${fileLink}<span class="hunk-chips">${hunkChips(h, fi)}</span>${testTag}<span class="range" title="${range}">${lines}</span></div>`;
+    const head = `<div class="hunk-head">${fileLink}<span class="hunk-chips">${hunkChips(h, fi)}</span>${testTag}<span class="range" title="${range}">${lines}</span>${editorAction(fi, hi)}</div>`;
     const collapsed = h.noise && S.hideNoise && !S.expandedNoise.has(key);
     const body = collapsed
         ? `<div class="noise-row">${n} line${pl(n)} · ${NOISE_LABEL[h.noise] || h.noise} <button class="link-btn" data-show-noise="${key}">show</button></div>`
@@ -2402,6 +2437,8 @@ function setupListeners() {
     // Delegated clicks for dynamic content.
     document.addEventListener('click', e => {
         const t = e.target;
+        const editor = t.closest('[data-editor-file]');
+        if (editor) { openInEditor(editor); return; }
         const a = t.closest('[data-action]');
         if (a) {
             const act = a.dataset.action;

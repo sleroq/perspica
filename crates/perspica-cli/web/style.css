@@ -150,6 +150,19 @@ body { overflow-x: hidden; }
 .accent-btn.primary { background: var(--accent); color: var(--accent-fg); }
 .plain-btn { padding: 4px 10px; font-size: var(--font-size-sm); border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-1); color: var(--text-1); cursor: pointer; }
 .plain-btn:hover { background: var(--bg-2); }
+.editor-action { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.editor-btn { min-height: 28px; white-space: nowrap; }
+.editor-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.editor-btn[aria-disabled="true"] { color: var(--text-3); cursor: not-allowed; }
+.editor-btn:disabled { cursor: progress; }
+.editor-status { max-width: 50ch; color: var(--text-2); font-size: var(--font-size-xs); overflow-wrap: anywhere; }
+.editor-status:empty { display: none; }
+@media (hover: hover) {
+    .editor-btn:hover:not(:disabled):not([aria-disabled="true"]) { color: var(--text-0); }
+}
+@media (pointer: coarse) {
+    .editor-btn { min-height: 44px; }
+}
 .ghost-btn { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; font-size: var(--font-size-sm); font-weight: 500; color: var(--text-1); background: transparent; border: 1px solid var(--border); border-radius: var(--radius); cursor: pointer; white-space: nowrap; }
 .ghost-btn:hover, .ghost-btn[aria-expanded="true"] { background: var(--bg-2); color: var(--text-0); }
 .ghost-btn .caret { color: var(--text-2); margin-right: -2px; transition: transform .12s; }

@@ -4,6 +4,7 @@ mod render_json;
 mod intel;
 mod llm;
 mod web;
+mod editor;
 mod deep;
 mod sessions;
 mod saved;
@@ -57,6 +58,10 @@ struct Cli {
     /// Don't open a browser tab (web mode)
     #[arg(long)]
     no_open: bool,
+
+    /// GUI editor executable for the web viewer (overrides PERSPICA_EDITOR, VISUAL, EDITOR)
+    #[arg(long, value_name = "EXECUTABLE")]
+    editor: Option<PathBuf>,
 
     /// Disable colored output
     #[arg(long)]
@@ -417,7 +422,10 @@ fn main() {
             }
             eprintln!("Wrote {}", cli.out.display());
         }
-        "web" => rt.block_on(web::serve(multi, cli.port, provider, detect, !cli.no_open, key)),
+        "web" => {
+            let editor = editor::Editor::new(cli.editor).unwrap_or_else(|e| fail(e));
+            rt.block_on(web::serve(multi, cli.port, provider, detect, !cli.no_open, key, editor));
+        }
         _ => render_tty::render_multi(&multi, !cli.no_color, cli.show_noise),
     }
 }
